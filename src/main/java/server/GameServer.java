@@ -23,8 +23,8 @@ public class GameServer {
     private final List<Card> tablePile = new ArrayList<>();
     private final List<Card> lastPlayedCards = new ArrayList<>();
     private ClientHandler lastPlayer;
-    private Rank currentTargetRank;
-    private Rank lastDeclaredRank;
+    private Rank currentTargetRank = Rank.TWO; // По умолчанию начинаем с двоек
+    private Rank lastDeclaredRank = Rank.TWO;
 
     private final DatabaseManager dbManager = new DatabaseManager();
 
@@ -34,8 +34,7 @@ public class GameServer {
 
     public void start() {
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
-            System.out.println("Сервер запущен на порту " + PORT + ". Ожидание игроков...");
-
+            System.out.println("Сервер запущен. Ожидание игроков...");
             while (!gameStarted) {
                 Socket clientSocket = serverSocket.accept();
                 ClientHandler handler = new ClientHandler(clientSocket, this);
@@ -43,7 +42,7 @@ public class GameServer {
                 new Thread(handler).start();
             }
         } catch (IOException e) {
-            System.err.println("Ошибка сети: " + e.getMessage());
+            System.err.println("Ошибка: " + e.getMessage());
         }
     }
 
@@ -80,8 +79,7 @@ public class GameServer {
 
     private void startFirstTurn() {
         currentPlayerIndex = new Random().nextInt(players.size());
-        // Первый ход назначаем случайно, далее пойдет по порядку
-        currentTargetRank = Rank.values()[new Random().nextInt(Rank.values().length)];
+        currentTargetRank = Rank.TWO; // Первая карта в раунде всегда Двойка
         nextTurn();
     }
 
@@ -154,22 +152,22 @@ public class GameServer {
             lastPlayer.sendHand();
             caller.addBullet();
             caller.sendMessage(new Message(MessageType.LOBBY_UPDATE, "Вы были правы! Патрон возвращен."));
-            currentPlayerIndex = players.indexOf(caller); // Ход переходит тому, кто успешно вскрыл блеф
+            currentPlayerIndex = players.indexOf(caller);
         } else {
             broadcast(new Message(MessageType.LOBBY_UPDATE, "❌ ОШИБКА! " + lastPlayer.getUsername() + " говорил правду. " + caller.getUsername() + " забирает карты!"));
             caller.getHand().addAll(tablePile);
             caller.sendHand();
             caller.sendMessage(new Message(MessageType.LOBBY_UPDATE, "Вы ошиблись. Один патрон сгорел."));
-            currentPlayerIndex = players.indexOf(lastPlayer); // Ход остается у честного игрока
+            currentPlayerIndex = players.indexOf(lastPlayer);
         }
 
         tablePile.clear();
         lastPlayedCards.clear();
-        currentTargetRank = lastDeclaredRank; // Номинал не повышается после вскрытия
+        currentTargetRank = lastDeclaredRank;
         nextTurn();
     }
 
-    // Логика последовательного повышения номинала
+    // --- Измененный метод: последовательное повышение номинала ---
     private void advanceTargetRank() {
         int nextOrdinal = (currentTargetRank.ordinal() + 1) % Rank.values().length;
         currentTargetRank = Rank.values()[nextOrdinal];
