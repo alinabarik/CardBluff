@@ -26,7 +26,7 @@ public class GameClient extends JFrame {
     private JButton readyButton;
     private JTextArea logArea;
     private JPanel handPanel;
-    private TablePanel tableArea; // Новая визуальная панель стола
+    private TablePanel tableArea;
     private JButton playCardsButton;
     private JButton callBluffButton;
     private JLabel bulletsLabel;
@@ -36,6 +36,8 @@ public class GameClient extends JFrame {
     private PrintWriter out;
     private BufferedReader in;
     private final Gson gson = new Gson();
+
+    private boolean isMyTurn = false; // Флаг для отслеживания хода
 
     public GameClient() {
         try {
@@ -72,7 +74,7 @@ public class GameClient extends JFrame {
 
         // Визуальный стол
         tableArea = new TablePanel();
-        tableArea.setBackground(new Color(30, 90, 45)); // Сукно стола
+        tableArea.setBackground(new Color(30, 90, 45));
         tableArea.setBorder(BorderFactory.createLineBorder(new Color(20, 60, 30), 4));
 
         // Лог событий (Справа)
@@ -135,19 +137,30 @@ public class GameClient extends JFrame {
         readyButton.addActionListener(e -> sendReadyStatus());
 
         playCardsButton.addActionListener(e -> {
-            if (selectedCards.isEmpty() || selectedCards.size() > 4) {
-                JOptionPane.showMessageDialog(this, "Для хода выберите от 1 до 4 карт!");
-                return;
-            }
             out.println(gson.toJson(new Message(MessageType.PLAY_TURN, gson.toJson(selectedCards))));
-            disableActionButtons();
+            isMyTurn = false;
+            updateActionButtons();
             selectedCards.clear();
         });
 
         callBluffButton.addActionListener(e -> {
             out.println(gson.toJson(new Message(MessageType.CALL_BLUFF, "Блеф!")));
-            disableActionButtons();
+            isMyTurn = false;
+            updateActionButtons();
         });
+    }
+
+    // Динамическое обновление состояния кнопок
+    private void updateActionButtons() {
+        if (isMyTurn) {
+            // Кнопка хода активна только если выбрана хотя бы одна карта
+            playCardsButton.setEnabled(!selectedCards.isEmpty());
+            // Кнопка блефа активна только если на столе есть карты
+            callBluffButton.setEnabled(tableArea.getCardsCount() > 0);
+        } else {
+            playCardsButton.setEnabled(false);
+            callBluffButton.setEnabled(false);
+        }
     }
 
     private void connectToServer() {
@@ -195,12 +208,18 @@ public class GameClient extends JFrame {
                         SwingUtilities.invokeLater(() -> renderHand(hand));
                     }
                     case TABLE_UPDATE -> {
-                        int cardsOnTable = Integer.parseInt(message.getPayload());
-                        SwingUtilities.invokeLater(() -> tableArea.setCardsCount(cardsOnTable));
+                        String[] parts = message.getPayload().split(";");
+                        int cardsOnTable = Integer.parseInt(parts[0]);
+                        String lastRank = parts.length > 1 ? parts[1] : "-";
+                        String targetRank = parts.length > 2 ? parts[2] : "-";
+                        SwingUtilities.invokeLater(() -> {
+                            tableArea.updateTable(cardsOnTable, lastRank, targetRank);
+                            updateActionButtons(); // Обновляем кнопки (вдруг мы передумаем блефовать)
+                        });
                     }
                     case YOUR_TURN -> SwingUtilities.invokeLater(() -> {
-                        playCardsButton.setEnabled(true);
-                        callBluffButton.setEnabled(true);
+                        isMyTurn = true;
+                        updateActionButtons();
                         logArea.append("\n⚡ ВАШ ХОД!\nТребуется: " + message.getPayload().toUpperCase() + "\n");
                         logArea.setCaretPosition(logArea.getDocument().getLength());
                     });
@@ -208,7 +227,8 @@ public class GameClient extends JFrame {
                         String winner = message.getPayload();
                         SwingUtilities.invokeLater(() -> {
                             JOptionPane.showMessageDialog(this, "Победитель: " + winner, "Конец игры", JOptionPane.INFORMATION_MESSAGE);
-                            disableActionButtons();
+                            isMyTurn = false;
+                            updateActionButtons();
                         });
                     }
                     case BULLETS_UPDATE -> {
@@ -249,32 +269,38 @@ public class GameClient extends JFrame {
                     selectedCards.remove(card);
                     cardButton.setSelectedState(false);
                 } else {
+                    if (selectedCards.size() >= 4) return; // Блокируем добавление 5-й карты (без окон)
                     selectedCards.add(card);
                     cardButton.setSelectedState(true);
                 }
+                updateActionButtons(); // Обновляем состояние кнопки "Сбросить"
             });
             handPanel.add(cardButton);
         }
         handPanel.revalidate();
         handPanel.repaint();
-    }
-
-    private void disableActionButtons() {
-        playCardsButton.setEnabled(false);
-        callBluffButton.setEnabled(false);
+        updateActionButtons();
     }
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> new GameClient().setVisible(true));
     }
 
-    // --- Кастомная панель для отрисовки рубашек карт на столе ---
+    // --- Кастомная панель для отрисовки стола ---
     class TablePanel extends JPanel {
         private int cardsCount = 0;
+        private String lastDeclared = "-";
+        private String target = "-";
 
-        public void setCardsCount(int count) {
+        public void updateTable(int count, String last, String nextTarget) {
             this.cardsCount = count;
+            this.lastDeclared = last;
+            this.target = nextTarget;
             repaint();
+        }
+
+        public int getCardsCount() {
+            return cardsCount;
         }
 
         @Override
@@ -282,6 +308,17 @@ public class GameClient extends JFrame {
             super.paintComponent(g);
             Graphics2D g2 = (Graphics2D) g;
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            // Отрисовка текстовых подсказок прямо на сукне (в верхнем левом углу)
+            g2.setColor(Color.WHITE);
+            g2.setFont(new Font("Segoe UI", Font.BOLD, 18));
+
+            if (!target.equals("-")) {
+                g2.drawString("Требуется положить: " + target, 15, 30);
+            }
+            if (cardsCount > 0 && !lastDeclared.equals("-")) {
+                g2.drawString("Последними выложили: " + lastDeclared, 15, 55);
+            }
 
             if (cardsCount == 0) {
                 g2.setColor(new Color(255, 255, 255, 100));
@@ -295,7 +332,6 @@ public class GameClient extends JFrame {
             int startX = getWidth() / 2 - 40;
             int startY = getHeight() / 2 - 60;
 
-            // Рисуем карты стопкой с легким случайным смещением для эффекта небрежности
             for (int i = 0; i < cardsCount; i++) {
                 double angle = Math.toRadians(-15 + (i * 7 % 30));
                 int offsetX = i * 4;
@@ -304,32 +340,25 @@ public class GameClient extends JFrame {
                 g2.translate(startX + offsetX + 40, startY + offsetY + 60);
                 g2.rotate(angle);
 
-                // Тень
                 g2.setColor(new Color(0, 0, 0, 60));
                 g2.fillRoundRect(-37, -57, 80, 120, 10, 10);
 
-                // Рубашка карты (Темно-синяя)
                 g2.setColor(new Color(25, 60, 120));
                 g2.fillRoundRect(-40, -60, 80, 120, 10, 10);
                 g2.setColor(Color.WHITE);
                 g2.drawRoundRect(-40, -60, 80, 120, 10, 10);
 
-                // Узор рубашки (Круг внутри)
                 g2.setColor(new Color(255, 255, 255, 40));
                 g2.fillOval(-20, -20, 40, 40);
 
                 g2.rotate(-angle);
                 g2.translate(-(startX + offsetX + 40), -(startY + offsetY + 60));
             }
-
-            // Пишем количество карт поверх
-            g2.setColor(Color.WHITE);
-            g2.setFont(new Font("Segoe UI", Font.BOLD, 18));
-            g2.drawString("Карт в стопке: " + cardsCount, 15, 25);
+            // Убрали надпись с количеством карт в стопке
         }
     }
 
-    // --- Класс кнопок-карт (остался из прошлого шага) ---
+    // --- Класс кнопок-карт ---
     class CardButton extends JButton {
         private final String rank;
         private final String suit;

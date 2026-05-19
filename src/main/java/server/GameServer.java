@@ -68,7 +68,8 @@ public class GameServer {
             player.setHand(hand);
             player.sendHand();
         }
-        broadcast(new Message(MessageType.TABLE_UPDATE, "0")); // Стол пуст
+        // Стол пуст, информация о требуемой карте здесь больше не передается
+        broadcast(new Message(MessageType.TABLE_UPDATE, "0;-"));
         startFirstTurn();
     }
 
@@ -82,6 +83,7 @@ public class GameServer {
         ClientHandler activePlayer = players.get(currentPlayerIndex);
         broadcast(new Message(MessageType.LOBBY_UPDATE, "Сейчас ходит: " + activePlayer.getUsername()));
 
+        // Требуемую карту отправляем ЛИЧНО активному игроку
         String requiredRank = getRankNameInRussian(currentTargetRank);
         activePlayer.sendMessage(new Message(MessageType.YOUR_TURN, requiredRank));
     }
@@ -100,17 +102,20 @@ public class GameServer {
         lastDeclaredRank = currentTargetRank;
         int numCards = playedCards.size();
 
-        broadcast(new Message(MessageType.TABLE_UPDATE, String.valueOf(tablePile.size()))); // Обновляем стол у всех
-        broadcast(new Message(MessageType.LOBBY_UPDATE,
-                player.getUsername() + " положил " + numCards + " карт(ы) как: " + getRankNameInRussian(currentTargetRank)));
-
         if (player.getHand().isEmpty()) {
+            broadcast(new Message(MessageType.TABLE_UPDATE, tablePile.size() + ";" + getRankNameInRussian(lastDeclaredRank)));
             broadcast(new Message(MessageType.LOBBY_UPDATE, "🏆 " + player.getUsername() + " ПОБЕДИЛ!"));
             broadcast(new Message(MessageType.GAME_OVER, player.getUsername()));
             return;
         }
 
         advanceTargetRank();
+
+        // Обновляем стол без отправки текущей требуемой карты
+        broadcast(new Message(MessageType.TABLE_UPDATE, tablePile.size() + ";" + getRankNameInRussian(lastDeclaredRank)));
+        broadcast(new Message(MessageType.LOBBY_UPDATE,
+                player.getUsername() + " положил " + numCards + " карт(ы) как: " + getRankNameInRussian(lastDeclaredRank)));
+
         currentPlayerIndex = (currentPlayerIndex + 1) % players.size();
         nextTurn();
     }
@@ -155,8 +160,8 @@ public class GameServer {
 
         tablePile.clear();
         lastPlayedCards.clear();
-        broadcast(new Message(MessageType.TABLE_UPDATE, "0")); // Очищаем стол
         currentTargetRank = lastDeclaredRank;
+        broadcast(new Message(MessageType.TABLE_UPDATE, "0;-")); // Очищаем стол
         nextTurn();
     }
 
