@@ -23,8 +23,8 @@ public class GameServer {
     private final List<Card> tablePile = new ArrayList<>();
     private final List<Card> lastPlayedCards = new ArrayList<>();
     private ClientHandler lastPlayer;
-    private Rank currentTargetRank = Rank.ACE;
-    private Rank lastDeclaredRank = Rank.ACE;
+    private Rank currentTargetRank;
+    private Rank lastDeclaredRank;
 
     private final DatabaseManager dbManager = new DatabaseManager();
 
@@ -34,8 +34,8 @@ public class GameServer {
 
     public void start() {
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
-            System.out.println("Сервер запущен. Ожидание игроков...");
-            // Сервер ждет игроков только до начала игры
+            System.out.println("Сервер запущен на порту " + PORT + ". Ожидание игроков...");
+
             while (!gameStarted) {
                 Socket clientSocket = serverSocket.accept();
                 ClientHandler handler = new ClientHandler(clientSocket, this);
@@ -43,7 +43,7 @@ public class GameServer {
                 new Thread(handler).start();
             }
         } catch (IOException e) {
-            System.err.println("Ошибка: " + e.getMessage());
+            System.err.println("Ошибка сети: " + e.getMessage());
         }
     }
 
@@ -80,7 +80,8 @@ public class GameServer {
 
     private void startFirstTurn() {
         currentPlayerIndex = new Random().nextInt(players.size());
-        advanceTargetRank(); // Выбираем случайную цель для первого хода
+        // Первый ход назначаем случайно, далее пойдет по порядку
+        currentTargetRank = Rank.values()[new Random().nextInt(Rank.values().length)];
         nextTurn();
     }
 
@@ -108,7 +109,6 @@ public class GameServer {
         broadcast(new Message(MessageType.LOBBY_UPDATE,
                 player.getUsername() + " положил " + numCards + " карт(ы) как: " + getRankNameInRussian(currentTargetRank)));
 
-        // ПРОСТАЯ ПОБЕДА (Конец игры)
         if (player.getHand().isEmpty()) {
             broadcast(new Message(MessageType.LOBBY_UPDATE, "🏆 " + player.getUsername() + " ПОБЕДИЛ!"));
             broadcast(new Message(MessageType.GAME_OVER, player.getUsername()));
@@ -154,24 +154,25 @@ public class GameServer {
             lastPlayer.sendHand();
             caller.addBullet();
             caller.sendMessage(new Message(MessageType.LOBBY_UPDATE, "Вы были правы! Патрон возвращен."));
-            currentPlayerIndex = players.indexOf(caller);
+            currentPlayerIndex = players.indexOf(caller); // Ход переходит тому, кто успешно вскрыл блеф
         } else {
             broadcast(new Message(MessageType.LOBBY_UPDATE, "❌ ОШИБКА! " + lastPlayer.getUsername() + " говорил правду. " + caller.getUsername() + " забирает карты!"));
             caller.getHand().addAll(tablePile);
             caller.sendHand();
             caller.sendMessage(new Message(MessageType.LOBBY_UPDATE, "Вы ошиблись. Один патрон сгорел."));
-            currentPlayerIndex = players.indexOf(lastPlayer);
+            currentPlayerIndex = players.indexOf(lastPlayer); // Ход остается у честного игрока
         }
 
         tablePile.clear();
         lastPlayedCards.clear();
-        currentTargetRank = lastDeclaredRank;
+        currentTargetRank = lastDeclaredRank; // Номинал не повышается после вскрытия
         nextTurn();
     }
 
+    // Логика последовательного повышения номинала
     private void advanceTargetRank() {
-        int randomIndex = new Random().nextInt(Rank.values().length);
-        currentTargetRank = Rank.values()[randomIndex];
+        int nextOrdinal = (currentTargetRank.ordinal() + 1) % Rank.values().length;
+        currentTargetRank = Rank.values()[nextOrdinal];
     }
 
     private String getRankNameInRussian(Rank rank) {

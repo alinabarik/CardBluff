@@ -15,9 +15,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class GameClient extends JFrame {
-    private static final String SERVER_ADDRESS = "127.0.0.1";
     private static final int SERVER_PORT = 8080;
 
+    private JTextField serverIpField;
     private JComboBox<Integer> playersCountBox;
     private JTextField nicknameField;
     private JButton connectButton;
@@ -36,23 +36,32 @@ public class GameClient extends JFrame {
 
     public GameClient() {
         setTitle("Карточный блеф");
-        setSize(800, 550);
+        setSize(850, 550);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
-        JPanel topPanel = new JPanel();
+        // --- Верхняя панель управления ---
+        JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 10));
+
+        topPanel.add(new JLabel("IP Сервера:"));
+        serverIpField = new JTextField("127.0.0.1", 10);
+        topPanel.add(serverIpField);
+
         topPanel.add(new JLabel("Игроков:"));
         playersCountBox = new JComboBox<>(new Integer[]{2, 3, 4});
         topPanel.add(playersCountBox);
-        topPanel.add(new JLabel(" Ник:"));
+
+        topPanel.add(new JLabel("Ник:"));
         nicknameField = new JTextField("Игрок", 10);
         topPanel.add(nicknameField);
+
         connectButton = new JButton("Подключиться");
         readyButton = new JButton("Я готов!");
         readyButton.setEnabled(false);
         topPanel.add(connectButton);
         topPanel.add(readyButton);
 
+        // --- Игровой стол (Чат/Логи) ---
         logArea = new JTextArea();
         logArea.setEditable(false);
         logArea.setFont(new Font("Monospaced", Font.PLAIN, 13));
@@ -60,10 +69,11 @@ public class GameClient extends JFrame {
         tablePanel.setBackground(new Color(34, 139, 34));
         tablePanel.add(new JScrollPane(logArea), BorderLayout.CENTER);
 
+        // --- Нижняя панель (Карты и действия) ---
         JPanel bottomPanel = new JPanel(new BorderLayout());
         handPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 10));
         JScrollPane handScroll = new JScrollPane(handPanel);
-        handScroll.setPreferredSize(new Dimension(800, 130));
+        handScroll.setPreferredSize(new Dimension(850, 130));
         handScroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_NEVER);
         handScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
 
@@ -112,16 +122,18 @@ public class GameClient extends JFrame {
 
     private void connectToServer() {
         try {
+            String serverAddress = serverIpField.getText().trim();
             int expectedPlayers = (Integer) playersCountBox.getSelectedItem();
             String nickname = nicknameField.getText().trim();
             if (nickname.isEmpty()) nickname = "Player_" + new java.util.Random().nextInt(100);
 
-            logArea.append("Подключение к серверу...\n");
-            socket = new Socket(SERVER_ADDRESS, SERVER_PORT);
+            logArea.append("Подключение к серверу " + serverAddress + "...\n");
+            socket = new Socket(serverAddress, SERVER_PORT);
             out = new PrintWriter(socket.getOutputStream(), true);
             in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
             connectButton.setEnabled(false);
+            serverIpField.setEnabled(false);
             playersCountBox.setEnabled(false);
             nicknameField.setEnabled(false);
             readyButton.setEnabled(true);
@@ -130,7 +142,7 @@ public class GameClient extends JFrame {
             out.println(gson.toJson(new Message(MessageType.CONNECT, payload)));
             new Thread(this::listenForMessages).start();
         } catch (IOException ex) {
-            logArea.append("Ошибка подключения: " + ex.getMessage() + "\n");
+            logArea.append("Ошибка подключения: Проверьте IP-адрес или запущен ли сервер.\n");
         }
     }
 
@@ -152,7 +164,7 @@ public class GameClient extends JFrame {
                         SwingUtilities.invokeLater(() -> renderHand(hand));
                     }
                     case YOUR_TURN -> SwingUtilities.invokeLater(() -> {
-                        logArea.setText(""); // Очищаем чат от прошлых ходов
+                        logArea.setText(""); // Очищаем чат от прошлых ходов для концентрации
                         playCardsButton.setEnabled(true);
                         callBluffButton.setEnabled(true);
                         logArea.append("=========================================\n");
