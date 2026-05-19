@@ -21,32 +21,28 @@ public class ClientHandler implements Runnable {
     private final Gson gson = new Gson();
 
     private boolean isReady = false;
-    private String username; // Имя игрока
-    private List<Card> hand = new ArrayList<>(); // Карты в руке
-    private int bullets = 3; // Патроны для блефа
+    private String username;
+    private List<Card> hand = new ArrayList<>();
+    private int bullets = 3;
 
     public ClientHandler(Socket socket, GameServer server) {
         this.socket = socket;
         this.server = server;
     }
 
-    // --- Геттеры и сеттеры ---
     public boolean isReady() { return isReady; }
     public String getUsername() { return username; }
     public List<Card> getHand() { return hand; }
     public void setHand(List<Card> hand) { this.hand = hand; }
 
-    // --- Методы для патронов ---
     public int getBullets() { return bullets; }
     public void useBullet() { bullets--; sendBulletsCount(); }
     public void addBullet() { bullets++; sendBulletsCount(); }
 
-    // Отправка клиенту информации о его патронах
     public void sendBulletsCount() {
         sendMessage(new Message(MessageType.BULLETS_UPDATE, String.valueOf(bullets)));
     }
 
-    // Отправка клиенту его обновленной руки (карт)
     public void sendHand() {
         sendMessage(new Message(MessageType.CARDS_DEALT, gson.toJson(hand)));
     }
@@ -63,18 +59,13 @@ public class ClientHandler implements Runnable {
 
                 switch (message.getType()) {
                     case CONNECT -> {
-                        // Разрезаем строку "2,Игрок" по запятой
                         String[] parts = message.getPayload().split(",");
                         int count = Integer.parseInt(parts[0]);
                         this.username = parts[1];
 
-                        // Регистрируем игрока в базе данных
-                        server.getDbManager().loginPlayer(this.username);
                         server.setExpectedPlayers(count);
 
-                        // Отправляем статистику и начальные патроны
-                        String stats = server.getDbManager().getPlayerStats(this.username);
-                        sendMessage(new Message(MessageType.LOBBY_UPDATE, "Успешное подключение! " + stats));
+                        sendMessage(new Message(MessageType.LOBBY_UPDATE, "Успешное подключение!"));
                         sendBulletsCount();
                     }
                     case PLAYER_READY -> {

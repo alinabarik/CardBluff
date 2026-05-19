@@ -23,14 +23,8 @@ public class GameServer {
     private final List<Card> tablePile = new ArrayList<>();
     private final List<Card> lastPlayedCards = new ArrayList<>();
     private ClientHandler lastPlayer;
-    private Rank currentTargetRank = Rank.TWO; // По умолчанию начинаем с двоек
+    private Rank currentTargetRank = Rank.TWO;
     private Rank lastDeclaredRank = Rank.TWO;
-
-    private final DatabaseManager dbManager = new DatabaseManager();
-
-    public DatabaseManager getDbManager() {
-        return dbManager;
-    }
 
     public void start() {
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
@@ -74,12 +68,13 @@ public class GameServer {
             player.setHand(hand);
             player.sendHand();
         }
+        broadcast(new Message(MessageType.TABLE_UPDATE, "0")); // Стол пуст
         startFirstTurn();
     }
 
     private void startFirstTurn() {
         currentPlayerIndex = new Random().nextInt(players.size());
-        currentTargetRank = Rank.TWO; // Первая карта в раунде всегда Двойка
+        currentTargetRank = Rank.TWO;
         nextTurn();
     }
 
@@ -104,17 +99,14 @@ public class GameServer {
 
         lastDeclaredRank = currentTargetRank;
         int numCards = playedCards.size();
+
+        broadcast(new Message(MessageType.TABLE_UPDATE, String.valueOf(tablePile.size()))); // Обновляем стол у всех
         broadcast(new Message(MessageType.LOBBY_UPDATE,
                 player.getUsername() + " положил " + numCards + " карт(ы) как: " + getRankNameInRussian(currentTargetRank)));
 
         if (player.getHand().isEmpty()) {
             broadcast(new Message(MessageType.LOBBY_UPDATE, "🏆 " + player.getUsername() + " ПОБЕДИЛ!"));
             broadcast(new Message(MessageType.GAME_OVER, player.getUsername()));
-
-            dbManager.recordWin(player.getUsername());
-            for (ClientHandler p : players) {
-                if (p != player) dbManager.recordLoss(p.getUsername());
-            }
             return;
         }
 
@@ -163,11 +155,11 @@ public class GameServer {
 
         tablePile.clear();
         lastPlayedCards.clear();
+        broadcast(new Message(MessageType.TABLE_UPDATE, "0")); // Очищаем стол
         currentTargetRank = lastDeclaredRank;
         nextTurn();
     }
 
-    // --- Измененный метод: последовательное повышение номинала ---
     private void advanceTargetRank() {
         int nextOrdinal = (currentTargetRank.ordinal() + 1) % Rank.values().length;
         currentTargetRank = Rank.values()[nextOrdinal];
