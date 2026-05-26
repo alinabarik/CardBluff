@@ -20,6 +20,9 @@ public class GameSession {
     private Rank currentTargetRank = Rank.TWO;
     private Rank lastDeclaredRank = Rank.TWO;
 
+    // Переменная для хранения последнего события (кто походил или результат блефа)
+    private String lastActionMessage = "";
+
     public GameSession(List<ClientHandler> players) {
         this.players = players;
     }
@@ -28,14 +31,13 @@ public class GameSession {
         for (ClientHandler player : players) player.sendMessage(message);
     }
 
-    // Вызывается сервером, когда комната полностью укомплектована нужным числом людей
     public void initSession() {
         broadcast(new Message(MessageType.LOBBY_UPDATE, "Комната собрана! Ждем готовности всех игроков..."));
         checkReadiness();
     }
 
     public synchronized void checkReadiness() {
-        if (gameStarted) return; // Защита от повторного запуска
+        if (gameStarted) return;
 
         for (ClientHandler player : players) {
             if (!player.isReady()) return;
@@ -58,6 +60,7 @@ public class GameSession {
             player.sendHand();
         }
         broadcast(new Message(MessageType.TABLE_UPDATE, "0;-;-"));
+        lastActionMessage = "Карты розданы.";
         startFirstTurn();
     }
 
@@ -69,7 +72,15 @@ public class GameSession {
 
     public synchronized void nextTurn() {
         ClientHandler activePlayer = players.get(currentPlayerIndex);
-        broadcast(new Message(MessageType.LOBBY_UPDATE, "Сейчас ходит: " + activePlayer.getUsername()));
+
+        String turnMsg = "Ходит: " + activePlayer.getUsername();
+
+        // Склеиваем последнее событие и информацию о текущем ходе, чтобы ничего не терялось
+        if (!lastActionMessage.isEmpty()) {
+            broadcast(new Message(MessageType.LOBBY_UPDATE, lastActionMessage + "  |  " + turnMsg));
+        } else {
+            broadcast(new Message(MessageType.LOBBY_UPDATE, turnMsg));
+        }
 
         String requiredRank = getRankNameInRussian(currentTargetRank);
         activePlayer.sendMessage(new Message(MessageType.YOUR_TURN, requiredRank));
@@ -102,8 +113,8 @@ public class GameSession {
                 + getRankNameInRussian(lastDeclaredRank) + ";"
                 + getRankNameInRussian(currentTargetRank)));
 
-        broadcast(new Message(MessageType.LOBBY_UPDATE,
-                player.getUsername() + " положил " + numCards + " карт(ы) как: " + getRankNameInRussian(lastDeclaredRank)));
+        // Записываем действие
+        lastActionMessage = player.getUsername() + " положил " + numCards + " шт. как " + getRankNameInRussian(lastDeclaredRank);
 
         currentPlayerIndex = (currentPlayerIndex + 1) % players.size();
         nextTurn();
@@ -133,14 +144,14 @@ public class GameSession {
         }
 
         if (lied) {
-            broadcast(new Message(MessageType.LOBBY_UPDATE, "🔥 БЛЕФ РАСКРЫТ! " + lastPlayer.getUsername() + " забирает все карты!"));
+            lastActionMessage = "🔥 " + caller.getUsername() + " вскрыл блеф! Карты забрал " + lastPlayer.getUsername();
             lastPlayer.getHand().addAll(tablePile);
             lastPlayer.sendHand();
             caller.addBullet();
             caller.sendMessage(new Message(MessageType.LOBBY_UPDATE, "Вы были правы! Патрон возвращен."));
             currentPlayerIndex = players.indexOf(caller);
         } else {
-            broadcast(new Message(MessageType.LOBBY_UPDATE, "❌ ОШИБКА! " + caller.getUsername() + " забирает карты!"));
+            lastActionMessage = "❌ " + caller.getUsername() + " не угадал! " + lastPlayer.getUsername() + " был честен";
             caller.getHand().addAll(tablePile);
             caller.sendHand();
             caller.sendMessage(new Message(MessageType.LOBBY_UPDATE, "Вы ошиблись. Один патрон сгорел."));

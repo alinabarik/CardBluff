@@ -36,6 +36,7 @@ public class GameClient extends JFrame {
     private final Gson gson = new Gson();
 
     private boolean isMyTurn = false;
+    private String myUsername; // Храним имя текущего игрока
 
     public GameClient() {
         try {
@@ -135,7 +136,6 @@ public class GameClient extends JFrame {
         if (isMyTurn) {
             int totalHandCards = handPanel.getComponentCount();
 
-            // Если осталась только 1 карта, разрешаем кинуть 1, иначе МИНИМУМ 2
             if (totalHandCards <= 1) {
                 playCardsButton.setEnabled(selectedCards.size() == 1);
             } else {
@@ -154,8 +154,13 @@ public class GameClient extends JFrame {
             if (serverAddress.isEmpty()) return;
 
             int expectedPlayers = (Integer) playersCountBox.getSelectedItem();
-            String nickname = nicknameField.getText().trim();
-            if (nickname.isEmpty()) nickname = "Player_" + new java.util.Random().nextInt(100);
+
+            // Запоминаем ник для проверок на выигрыш/проигрыш
+            myUsername = nicknameField.getText().trim();
+            if (myUsername.isEmpty()) {
+                myUsername = "Player_" + new java.util.Random().nextInt(100);
+                nicknameField.setText(myUsername); // Обновляем поле, если сгенерировали
+            }
 
             socket = new Socket(serverAddress, SERVER_PORT);
             out = new PrintWriter(socket.getOutputStream(), true);
@@ -168,7 +173,7 @@ public class GameClient extends JFrame {
             readyButton.setEnabled(true);
             tableArea.setStatus("Подключение успешно. Ожидание...");
 
-            String payload = expectedPlayers + "," + nickname;
+            String payload = expectedPlayers + "," + myUsername;
             out.println(gson.toJson(new Message(MessageType.CONNECT, payload)));
             new Thread(this::listenForMessages).start();
         } catch (IOException ex) {
@@ -181,7 +186,6 @@ public class GameClient extends JFrame {
         out.println(gson.toJson(new Message(MessageType.PLAYER_READY, "Готов")));
     }
 
-    // Возврат интерфейса в стартовое состояние Лобби
     private void resetToLobby() {
         try {
             if (socket != null && !socket.isClosed()) socket.close();
@@ -228,15 +232,21 @@ public class GameClient extends JFrame {
                     case YOUR_TURN -> SwingUtilities.invokeLater(() -> {
                         isMyTurn = true;
                         updateActionButtons();
-                        tableArea.setStatus("ВАШ ХОД! Требуется: " + message.getPayload().toUpperCase());
+                        // Сохраняем последнее сообщение со стола, но добавляем пометку, что ваш ход
+                        tableArea.setStatus(tableArea.getStatusMsg() + "  |  ⚡ ВАШ ХОД! (" + message.getPayload().toUpperCase() + ")");
                     });
                     case GAME_OVER -> {
                         String winner = message.getPayload();
                         SwingUtilities.invokeLater(() -> {
-                            JOptionPane.showMessageDialog(this, "Победитель: " + winner, "Конец игры", JOptionPane.INFORMATION_MESSAGE);
+                            // Проверяем, кто победил, и выводим соответствующее сообщение
+                            if (winner.equals(myUsername)) {
+                                JOptionPane.showMessageDialog(this, "🏆 Поздравляем! Вы победили!", "Конец игры", JOptionPane.INFORMATION_MESSAGE);
+                            } else {
+                                JOptionPane.showMessageDialog(this, "💀 Вы проиграли. Победитель: " + winner, "Конец игры", JOptionPane.ERROR_MESSAGE);
+                            }
                             resetToLobby();
                         });
-                        break; // Выходим из цикла прослушивания, сокет закрыт
+                        break;
                     }
                     case BULLETS_UPDATE -> {
                         int count = Integer.parseInt(message.getPayload());
@@ -316,6 +326,10 @@ public class GameClient extends JFrame {
             repaint();
         }
 
+        public String getStatusMsg() {
+            return this.statusMsg;
+        }
+
         public int getCardsCount() {
             return cardsCount;
         }
@@ -336,7 +350,6 @@ public class GameClient extends JFrame {
                 g2.drawString("Последними выложили: " + lastDeclared, 15, 55);
             }
 
-            // Отрисовка статуса по центру снизу
             if (!statusMsg.isEmpty()) {
                 g2.setColor(new Color(255, 230, 100));
                 g2.setFont(new Font("Segoe UI", Font.BOLD, 20));
