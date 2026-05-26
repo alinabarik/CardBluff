@@ -16,7 +16,7 @@ import java.util.List;
 public class ClientHandler implements Runnable {
     private final Socket socket;
     private final GameServer server;
-    private GameSession session; // Текущая комната игрока
+    private GameSession session;
 
     private PrintWriter out;
     private BufferedReader in;
@@ -67,16 +67,13 @@ public class ClientHandler implements Runnable {
                         int count = Integer.parseInt(parts[0]);
                         this.username = parts[1];
 
-                        sendMessage(new Message(MessageType.LOBBY_UPDATE, "Успешное подключение! Поиск игроков..."));
                         sendBulletsCount();
-
-                        // Добавляем игрока в нужную очередь матчмейкинга
                         server.addToQueue(this, count);
                     }
                     case PLAYER_READY -> {
                         this.isReady = true;
                         if (session != null) {
-                            session.broadcast(new Message(MessageType.LOBBY_UPDATE, this.username + " готов!"));
+                            session.broadcast(new Message(MessageType.LOBBY_UPDATE, this.username + " подтвердил готовность!"));
                             session.checkReadiness();
                         }
                     }
@@ -93,6 +90,9 @@ public class ClientHandler implements Runnable {
             }
         } catch (IOException e) {
             System.out.println("Клиент " + username + " отключился.");
+        } finally {
+            // Обязательно убираем игрока из очередей при разрыве соединения
+            server.removeFromQueue(this);
         }
     }
 

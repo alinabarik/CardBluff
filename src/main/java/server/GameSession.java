@@ -28,7 +28,15 @@ public class GameSession {
         for (ClientHandler player : players) player.sendMessage(message);
     }
 
+    // Вызывается сервером, когда комната полностью укомплектована нужным числом людей
+    public void initSession() {
+        broadcast(new Message(MessageType.LOBBY_UPDATE, "Комната собрана! Ждем готовности всех игроков..."));
+        checkReadiness();
+    }
+
     public synchronized void checkReadiness() {
+        if (gameStarted) return; // Защита от повторного запуска
+
         for (ClientHandler player : players) {
             if (!player.isReady()) return;
         }
@@ -90,7 +98,6 @@ public class GameSession {
 
         advanceTargetRank();
 
-        // Обновляем стол, передавая последнюю заявленную и следующую требуемую карту
         broadcast(new Message(MessageType.TABLE_UPDATE, tablePile.size() + ";"
                 + getRankNameInRussian(lastDeclaredRank) + ";"
                 + getRankNameInRussian(currentTargetRank)));
