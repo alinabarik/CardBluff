@@ -20,7 +20,6 @@ public class GameSession {
     private Rank currentTargetRank = Rank.TWO;
     private Rank lastDeclaredRank = Rank.TWO;
 
-    // Переменная для хранения последнего события (кто походил или результат блефа)
     private String lastActionMessage = "";
 
     public GameSession(List<ClientHandler> players) {
@@ -75,9 +74,9 @@ public class GameSession {
 
         String turnMsg = "Ходит: " + activePlayer.getUsername();
 
-        // Склеиваем последнее событие и информацию о текущем ходе, чтобы ничего не терялось
         if (!lastActionMessage.isEmpty()) {
-            broadcast(new Message(MessageType.LOBBY_UPDATE, lastActionMessage + "  |  " + turnMsg));
+            // Используем чёткий разделитель " | " для удобного переноса строк на клиенте
+            broadcast(new Message(MessageType.LOBBY_UPDATE, lastActionMessage + " | " + turnMsg));
         } else {
             broadcast(new Message(MessageType.LOBBY_UPDATE, turnMsg));
         }
@@ -113,7 +112,6 @@ public class GameSession {
                 + getRankNameInRussian(lastDeclaredRank) + ";"
                 + getRankNameInRussian(currentTargetRank)));
 
-        // Записываем действие
         lastActionMessage = player.getUsername() + " положил " + numCards + " шт. как " + getRankNameInRussian(lastDeclaredRank);
 
         currentPlayerIndex = (currentPlayerIndex + 1) % players.size();
@@ -144,14 +142,16 @@ public class GameSession {
         }
 
         if (lied) {
-            lastActionMessage = "🔥 " + caller.getUsername() + " вскрыл блеф! Карты забрал " + lastPlayer.getUsername();
+            // Обновленное сообщение при успешном блефе
+            lastActionMessage = "🔥 " + caller.getUsername() + " крикнул БЛЕФ! И оказался прав! " + lastPlayer.getUsername() + " забирает карты";
             lastPlayer.getHand().addAll(tablePile);
             lastPlayer.sendHand();
             caller.addBullet();
             caller.sendMessage(new Message(MessageType.LOBBY_UPDATE, "Вы были правы! Патрон возвращен."));
             currentPlayerIndex = players.indexOf(caller);
         } else {
-            lastActionMessage = "❌ " + caller.getUsername() + " не угадал! " + lastPlayer.getUsername() + " был честен";
+            // Обновленное сообщение при провальном блефе
+            lastActionMessage = "❌ " + caller.getUsername() + " крикнул БЛЕФ! Но ошибся! " + lastPlayer.getUsername() + " был честен";
             caller.getHand().addAll(tablePile);
             caller.sendHand();
             caller.sendMessage(new Message(MessageType.LOBBY_UPDATE, "Вы ошиблись. Один патрон сгорел."));

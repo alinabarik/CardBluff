@@ -36,7 +36,7 @@ public class GameClient extends JFrame {
     private final Gson gson = new Gson();
 
     private boolean isMyTurn = false;
-    private String myUsername; // Храним имя текущего игрока
+    private String myUsername;
 
     public GameClient() {
         try {
@@ -48,7 +48,6 @@ public class GameClient extends JFrame {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
-        // --- ВЕРХНЯЯ ПАНЕЛЬ ---
         JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 15, 10));
         topPanel.setBackground(new Color(240, 240, 245));
         topPanel.add(new JLabel("IP сервера:"));
@@ -66,7 +65,6 @@ public class GameClient extends JFrame {
         topPanel.add(connectButton);
         topPanel.add(readyButton);
 
-        // --- ЦЕНТРАЛЬНАЯ ПАНЕЛЬ (Стол) ---
         JPanel centerPanel = new JPanel(new BorderLayout(10, 0));
         centerPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
         centerPanel.setBackground(new Color(40, 45, 50));
@@ -76,7 +74,6 @@ public class GameClient extends JFrame {
         tableArea.setBorder(BorderFactory.createLineBorder(new Color(20, 60, 30), 4));
         centerPanel.add(tableArea, BorderLayout.CENTER);
 
-        // --- НИЖНЯЯ ПАНЕЛЬ (Рука + Кнопки) ---
         JPanel bottomPanel = new JPanel(new BorderLayout());
         bottomPanel.setBackground(new Color(240, 240, 245));
 
@@ -155,11 +152,10 @@ public class GameClient extends JFrame {
 
             int expectedPlayers = (Integer) playersCountBox.getSelectedItem();
 
-            // Запоминаем ник для проверок на выигрыш/проигрыш
             myUsername = nicknameField.getText().trim();
             if (myUsername.isEmpty()) {
                 myUsername = "Player_" + new java.util.Random().nextInt(100);
-                nicknameField.setText(myUsername); // Обновляем поле, если сгенерировали
+                nicknameField.setText(myUsername);
             }
 
             socket = new Socket(serverAddress, SERVER_PORT);
@@ -232,13 +228,12 @@ public class GameClient extends JFrame {
                     case YOUR_TURN -> SwingUtilities.invokeLater(() -> {
                         isMyTurn = true;
                         updateActionButtons();
-                        // Сохраняем последнее сообщение со стола, но добавляем пометку, что ваш ход
-                        tableArea.setStatus(tableArea.getStatusMsg() + "  |  ⚡ ВАШ ХОД! (" + message.getPayload().toUpperCase() + ")");
+                        // Добавляем сообщение, используя разделитель " | " для авто-переноса
+                        tableArea.setStatus(tableArea.getStatusMsg() + " | ⚡ ВАШ ХОД! (" + message.getPayload().toUpperCase() + ")");
                     });
                     case GAME_OVER -> {
                         String winner = message.getPayload();
                         SwingUtilities.invokeLater(() -> {
-                            // Проверяем, кто победил, и выводим соответствующее сообщение
                             if (winner.equals(myUsername)) {
                                 JOptionPane.showMessageDialog(this, "🏆 Поздравляем! Вы победили!", "Конец игры", JOptionPane.INFORMATION_MESSAGE);
                             } else {
@@ -350,11 +345,24 @@ public class GameClient extends JFrame {
                 g2.drawString("Последними выложили: " + lastDeclared, 15, 55);
             }
 
+            // ИЗМЕНЕНИЯ ЗДЕСЬ: Логика отрисовки многострочного текста
             if (!statusMsg.isEmpty()) {
                 g2.setColor(new Color(255, 230, 100));
-                g2.setFont(new Font("Segoe UI", Font.BOLD, 20));
+                g2.setFont(new Font("Segoe UI", Font.BOLD, 18)); // Немного уменьшен шрифт
                 FontMetrics fm = g2.getFontMetrics();
-                g2.drawString(statusMsg, (getWidth() - fm.stringWidth(statusMsg)) / 2, getHeight() - 25);
+
+                // Разбиваем сообщение по разделителю " | " (если он есть)
+                String[] lines = statusMsg.split(" \\| ");
+
+                // Вычисляем координату Y, чтобы последняя строка находилась у нижнего края (getHeight() - 25)
+                int lineHeight = 25;
+                int startY = getHeight() - 20 - (lines.length - 1) * lineHeight;
+
+                for (String line : lines) {
+                    String cleanLine = line.trim();
+                    g2.drawString(cleanLine, (getWidth() - fm.stringWidth(cleanLine)) / 2, startY);
+                    startY += lineHeight;
+                }
             }
 
             if (cardsCount == 0) {
