@@ -16,6 +16,8 @@ import java.util.List;
 public class ClientHandler implements Runnable {
     private final Socket socket;
     private final GameServer server;
+    private GameSession session; // Текущая комната игрока
+
     private PrintWriter out;
     private BufferedReader in;
     private final Gson gson = new Gson();
@@ -29,6 +31,8 @@ public class ClientHandler implements Runnable {
         this.socket = socket;
         this.server = server;
     }
+
+    public void setSession(GameSession session) { this.session = session; }
 
     public boolean isReady() { return isReady; }
     public String getUsername() { return username; }
@@ -63,32 +67,38 @@ public class ClientHandler implements Runnable {
                         int count = Integer.parseInt(parts[0]);
                         this.username = parts[1];
 
-                        server.setExpectedPlayers(count);
-
-                        sendMessage(new Message(MessageType.LOBBY_UPDATE, "Успешное подключение!"));
+                        sendMessage(new Message(MessageType.LOBBY_UPDATE, "Успешное подключение! Поиск игроков..."));
                         sendBulletsCount();
+
+                        // Добавляем игрока в нужную очередь матчмейкинга
+                        server.addToQueue(this, count);
                     }
                     case PLAYER_READY -> {
                         this.isReady = true;
-                        server.broadcast(new Message(MessageType.LOBBY_UPDATE, this.username + " готов!"));
-                        server.checkReadiness();
+                        if (session != null) {
+                            session.broadcast(new Message(MessageType.LOBBY_UPDATE, this.username + " готов!"));
+                            session.checkReadiness();
+                        }
                     }
                     case PLAY_TURN -> {
                         java.lang.reflect.Type listType = new com.google.gson.reflect.TypeToken<java.util.List<shared.Card>>(){}.getType();
                         List<shared.Card> playedCards = gson.fromJson(message.getPayload(), listType);
-                        server.handlePlayTurn(this, playedCards);
+                        if (session != null) session.handlePlayTurn(this, playedCards);
                     }
                     case CALL_BLUFF -> {
-                        server.handleCallBluff(this);
+                        if (session != null) session.handleCallBluff(this);
                     }
+                    default -> {}
                 }
             }
         } catch (IOException e) {
-            System.out.println("Клиент отключился.");
+            System.out.println("Клиент " + username + " отключился.");
         }
     }
 
     public void sendMessage(Message message) {
-        out.println(gson.toJson(message));
+        if (out != null) {
+            out.println(gson.toJson(message));
+        }
     }
 }

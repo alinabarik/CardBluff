@@ -6,7 +6,6 @@ import shared.MessageType;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -24,7 +23,6 @@ public class GameClient extends JFrame {
     private JTextField nicknameField;
     private JButton connectButton;
     private JButton readyButton;
-    private JTextArea logArea;
     private JPanel handPanel;
     private TablePanel tableArea;
     private JButton playCardsButton;
@@ -37,7 +35,7 @@ public class GameClient extends JFrame {
     private BufferedReader in;
     private final Gson gson = new Gson();
 
-    private boolean isMyTurn = false; // Флаг для отслеживания хода
+    private boolean isMyTurn = false;
 
     public GameClient() {
         try {
@@ -67,32 +65,15 @@ public class GameClient extends JFrame {
         topPanel.add(connectButton);
         topPanel.add(readyButton);
 
-        // --- ЦЕНТРАЛЬНАЯ ПАНЕЛЬ (Стол + Лог) ---
+        // --- ЦЕНТРАЛЬНАЯ ПАНЕЛЬ (Стол) ---
         JPanel centerPanel = new JPanel(new BorderLayout(10, 0));
         centerPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
         centerPanel.setBackground(new Color(40, 45, 50));
 
-        // Визуальный стол
         tableArea = new TablePanel();
         tableArea.setBackground(new Color(30, 90, 45));
         tableArea.setBorder(BorderFactory.createLineBorder(new Color(20, 60, 30), 4));
-
-        // Лог событий (Справа)
-        logArea = new JTextArea();
-        logArea.setEditable(false);
-        logArea.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        logArea.setLineWrap(true);
-        logArea.setWrapStyleWord(true);
-        JScrollPane logScroll = new JScrollPane(logArea);
-        logScroll.setPreferredSize(new Dimension(280, 0));
-        TitledBorder logBorder = BorderFactory.createTitledBorder("История ходов");
-        logBorder.setTitleColor(Color.WHITE);
-        logScroll.setBorder(logBorder);
-        logScroll.setOpaque(false);
-        logScroll.getViewport().setOpaque(false);
-
         centerPanel.add(tableArea, BorderLayout.CENTER);
-        centerPanel.add(logScroll, BorderLayout.EAST);
 
         // --- НИЖНЯЯ ПАНЕЛЬ (Рука + Кнопки) ---
         JPanel bottomPanel = new JPanel(new BorderLayout());
@@ -150,12 +131,16 @@ public class GameClient extends JFrame {
         });
     }
 
-    // Динамическое обновление состояния кнопок
     private void updateActionButtons() {
         if (isMyTurn) {
-            // Кнопка хода активна только если выбрана хотя бы одна карта
-            playCardsButton.setEnabled(!selectedCards.isEmpty());
-            // Кнопка блефа активна только если на столе есть карты
+            int totalHandCards = handPanel.getComponentCount();
+
+            // Если осталась только 1 карта, разрешаем кинуть 1, иначе МИНИМУМ 2
+            if (totalHandCards <= 1) {
+                playCardsButton.setEnabled(selectedCards.size() == 1);
+            } else {
+                playCardsButton.setEnabled(selectedCards.size() >= 2 && selectedCards.size() <= 4);
+            }
             callBluffButton.setEnabled(tableArea.getCardsCount() > 0);
         } else {
             playCardsButton.setEnabled(false);
@@ -181,6 +166,7 @@ public class GameClient extends JFrame {
             playersCountBox.setEnabled(false);
             nicknameField.setEnabled(false);
             readyButton.setEnabled(true);
+            tableArea.setStatus("Подключение успешно. Ожидание...");
 
             String payload = expectedPlayers + "," + nickname;
             out.println(gson.toJson(new Message(MessageType.CONNECT, payload)));
@@ -193,6 +179,28 @@ public class GameClient extends JFrame {
     private void sendReadyStatus() {
         readyButton.setEnabled(false);
         out.println(gson.toJson(new Message(MessageType.PLAYER_READY, "Готов")));
+    }
+
+    // Возврат интерфейса в стартовое состояние Лобби
+    private void resetToLobby() {
+        try {
+            if (socket != null && !socket.isClosed()) socket.close();
+        } catch (IOException ignored) {}
+
+        isMyTurn = false;
+        tableArea.updateTable(0, "-", "-");
+        tableArea.setStatus("Игра окончена. Можно начать заново.");
+        handPanel.removeAll();
+        handPanel.repaint();
+
+        connectButton.setEnabled(true);
+        serverIpField.setEnabled(true);
+        playersCountBox.setEnabled(true);
+        nicknameField.setEnabled(true);
+        readyButton.setEnabled(false);
+        playCardsButton.setEnabled(false);
+        callBluffButton.setEnabled(false);
+        bulletsLabel.setText("Патроны: O O O ");
     }
 
     private void listenForMessages() {
@@ -214,22 +222,21 @@ public class GameClient extends JFrame {
                         String targetRank = parts.length > 2 ? parts[2] : "-";
                         SwingUtilities.invokeLater(() -> {
                             tableArea.updateTable(cardsOnTable, lastRank, targetRank);
-                            updateActionButtons(); // Обновляем кнопки (вдруг мы передумаем блефовать)
+                            updateActionButtons();
                         });
                     }
                     case YOUR_TURN -> SwingUtilities.invokeLater(() -> {
                         isMyTurn = true;
                         updateActionButtons();
-                        logArea.append("\n⚡ ВАШ ХОД!\nТребуется: " + message.getPayload().toUpperCase() + "\n");
-                        logArea.setCaretPosition(logArea.getDocument().getLength());
+                        tableArea.setStatus("ВАШ ХОД! Требуется: " + message.getPayload().toUpperCase());
                     });
                     case GAME_OVER -> {
                         String winner = message.getPayload();
                         SwingUtilities.invokeLater(() -> {
                             JOptionPane.showMessageDialog(this, "Победитель: " + winner, "Конец игры", JOptionPane.INFORMATION_MESSAGE);
-                            isMyTurn = false;
-                            updateActionButtons();
+                            resetToLobby();
                         });
+                        break; // Выходим из цикла прослушивания, сокет закрыт
                     }
                     case BULLETS_UPDATE -> {
                         int count = Integer.parseInt(message.getPayload());
@@ -238,14 +245,19 @@ public class GameClient extends JFrame {
                         String finalBulletsText = bulletsText;
                         SwingUtilities.invokeLater(() -> bulletsLabel.setText(finalBulletsText));
                     }
-                    default -> SwingUtilities.invokeLater(() -> {
-                        logArea.append("• " + message.getPayload() + "\n");
-                        logArea.setCaretPosition(logArea.getDocument().getLength());
+                    case LOBBY_UPDATE -> SwingUtilities.invokeLater(() -> {
+                        tableArea.setStatus(message.getPayload());
                     });
+                    default -> {}
                 }
             }
         } catch (IOException e) {
-            SwingUtilities.invokeLater(() -> logArea.append("Связь прервана.\n"));
+            SwingUtilities.invokeLater(() -> {
+                if (!connectButton.isEnabled()) {
+                    tableArea.setStatus("Связь с сервером прервана.");
+                    resetToLobby();
+                }
+            });
         }
     }
 
@@ -269,11 +281,11 @@ public class GameClient extends JFrame {
                     selectedCards.remove(card);
                     cardButton.setSelectedState(false);
                 } else {
-                    if (selectedCards.size() >= 4) return; // Блокируем добавление 5-й карты (без окон)
+                    if (selectedCards.size() >= 4) return;
                     selectedCards.add(card);
                     cardButton.setSelectedState(true);
                 }
-                updateActionButtons(); // Обновляем состояние кнопки "Сбросить"
+                updateActionButtons();
             });
             handPanel.add(cardButton);
         }
@@ -286,16 +298,21 @@ public class GameClient extends JFrame {
         SwingUtilities.invokeLater(() -> new GameClient().setVisible(true));
     }
 
-    // --- Кастомная панель для отрисовки стола ---
     class TablePanel extends JPanel {
         private int cardsCount = 0;
         private String lastDeclared = "-";
         private String target = "-";
+        private String statusMsg = "Добро пожаловать в игру!";
 
         public void updateTable(int count, String last, String nextTarget) {
             this.cardsCount = count;
             this.lastDeclared = last;
             this.target = nextTarget;
+            repaint();
+        }
+
+        public void setStatus(String msg) {
+            this.statusMsg = msg;
             repaint();
         }
 
@@ -309,7 +326,6 @@ public class GameClient extends JFrame {
             Graphics2D g2 = (Graphics2D) g;
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-            // Отрисовка текстовых подсказок прямо на сукне (в верхнем левом углу)
             g2.setColor(Color.WHITE);
             g2.setFont(new Font("Segoe UI", Font.BOLD, 18));
 
@@ -320,12 +336,15 @@ public class GameClient extends JFrame {
                 g2.drawString("Последними выложили: " + lastDeclared, 15, 55);
             }
 
-            if (cardsCount == 0) {
-                g2.setColor(new Color(255, 255, 255, 100));
-                g2.setFont(new Font("Segoe UI", Font.BOLD, 24));
-                String msg = "Стол пуст";
+            // Отрисовка статуса по центру снизу
+            if (!statusMsg.isEmpty()) {
+                g2.setColor(new Color(255, 230, 100));
+                g2.setFont(new Font("Segoe UI", Font.BOLD, 20));
                 FontMetrics fm = g2.getFontMetrics();
-                g2.drawString(msg, (getWidth() - fm.stringWidth(msg)) / 2, getHeight() / 2);
+                g2.drawString(statusMsg, (getWidth() - fm.stringWidth(statusMsg)) / 2, getHeight() - 25);
+            }
+
+            if (cardsCount == 0) {
                 return;
             }
 
@@ -354,11 +373,9 @@ public class GameClient extends JFrame {
                 g2.rotate(-angle);
                 g2.translate(-(startX + offsetX + 40), -(startY + offsetY + 60));
             }
-            // Убрали надпись с количеством карт в стопке
         }
     }
 
-    // --- Класс кнопок-карт ---
     class CardButton extends JButton {
         private final String rank;
         private final String suit;
