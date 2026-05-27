@@ -229,7 +229,7 @@ public class GameClient extends JFrame {
                         isMyTurn = true;
                         updateActionButtons();
                         // Добавляем сообщение, используя разделитель " | " для авто-переноса
-                        tableArea.setStatus(tableArea.getStatusMsg() + " | ⚡ ВАШ ХОД! (" + message.getPayload().toUpperCase() + ")");
+                        tableArea.setStatus(tableArea.getStatusMsg() + " | ВАШ ХОД! (" + message.getPayload().toUpperCase() + ")");
                     });
                     case GAME_OVER -> {
                         String winner = message.getPayload();
