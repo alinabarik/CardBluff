@@ -101,7 +101,7 @@ public class GameSession {
 
         if (player.getHand().isEmpty()) {
             broadcast(new Message(MessageType.TABLE_UPDATE, tablePile.size() + ";" + getRankNameInRussian(lastDeclaredRank) + ";-"));
-            broadcast(new Message(MessageType.LOBBY_UPDATE, "🏆 " + player.getUsername() + " ПОБЕДИЛ!"));
+            broadcast(new Message(MessageType.LOBBY_UPDATE, player.getUsername() + " ПОБЕДИЛ!"));
             broadcast(new Message(MessageType.GAME_OVER, player.getUsername()));
             return;
         }
@@ -142,16 +142,16 @@ public class GameSession {
         }
 
         if (lied) {
-            // Обновленное сообщение при успешном блефе
-            lastActionMessage = "🔥 " + caller.getUsername() + " крикнул БЛЕФ! И оказался прав! " + lastPlayer.getUsername() + " забирает карты";
+            // Обновленное сообщение при успешном блефе (смайлик удален)
+            lastActionMessage = caller.getUsername() + " крикнул БЛЕФ! И оказался прав! " + lastPlayer.getUsername() + " забирает карты";
             lastPlayer.getHand().addAll(tablePile);
             lastPlayer.sendHand();
             caller.addBullet();
             caller.sendMessage(new Message(MessageType.LOBBY_UPDATE, "Вы были правы! Патрон возвращен."));
             currentPlayerIndex = players.indexOf(caller);
         } else {
-            // Обновленное сообщение при провальном блефе
-            lastActionMessage = "❌ " + caller.getUsername() + " крикнул БЛЕФ! Но ошибся! " + lastPlayer.getUsername() + " был честен";
+            // Обновленное сообщение при провальном блефе (смайлик удален)
+            lastActionMessage = caller.getUsername() + " крикнул БЛЕФ! Но ошибся! " + lastPlayer.getUsername() + " был честен";
             caller.getHand().addAll(tablePile);
             caller.sendHand();
             caller.sendMessage(new Message(MessageType.LOBBY_UPDATE, "Вы ошиблись. Один патрон сгорел."));

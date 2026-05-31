@@ -335,20 +335,10 @@ public class GameClient extends JFrame {
             Graphics2D g2 = (Graphics2D) g;
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-            g2.setColor(Color.WHITE);
-            g2.setFont(new Font("Segoe UI", Font.BOLD, 18));
-
-            if (!target.equals("-")) {
-                g2.drawString("Требуется положить: " + target, 15, 30);
-            }
-            if (cardsCount > 0 && !lastDeclared.equals("-")) {
-                g2.drawString("Последними выложили: " + lastDeclared, 15, 55);
-            }
-
-            // ИЗМЕНЕНИЯ ЗДЕСЬ: Логика отрисовки многострочного текста
+            // ИЗМЕНЕНИЯ ЗДЕСЬ: Логика отрисовки многострочного желтого текста
             if (!statusMsg.isEmpty()) {
                 g2.setColor(new Color(255, 230, 100));
-                g2.setFont(new Font("Segoe UI", Font.BOLD, 18)); // Немного уменьшен шрифт
+                g2.setFont(new Font("Segoe UI", Font.BOLD, 18));
                 FontMetrics fm = g2.getFontMetrics();
 
                 // Разбиваем сообщение по разделителю " | " (если он есть)
