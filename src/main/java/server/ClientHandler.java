@@ -89,10 +89,21 @@ public class ClientHandler implements Runnable {
                 }
             }
         } catch (IOException e) {
-            System.out.println("Клиент " + username + " отключился.");
+            System.out.println("Клиент " + username + " отключился (разрыв соединения).");
         } finally {
-            // Обязательно убираем игрока из очередей при разрыве соединения
+            System.out.println("Очистка ресурсов для клиента: " + username);
+            // Убираем игрока из очередей
             server.removeFromQueue(this);
+            // Если игрок в сессии, уведомляем всех об отключении
+            if (session != null) {
+                session.handlePlayerDisconnect(this);
+            }
+            // Закрываем сокет
+            try {
+                if (socket != null && !socket.isClosed()) {
+                    socket.close();
+                }
+            } catch (IOException ignored) {}
         }
     }
 

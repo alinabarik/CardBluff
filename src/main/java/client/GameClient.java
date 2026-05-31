@@ -228,16 +228,18 @@ public class GameClient extends JFrame {
                     case YOUR_TURN -> SwingUtilities.invokeLater(() -> {
                         isMyTurn = true;
                         updateActionButtons();
-                        // Добавляем сообщение, используя разделитель " | " для авто-переноса
                         tableArea.setStatus(tableArea.getStatusMsg() + " | ВАШ ХОД! (" + message.getPayload().toUpperCase() + ")");
                     });
                     case GAME_OVER -> {
-                        String winner = message.getPayload();
+                        String payload = message.getPayload();
                         SwingUtilities.invokeLater(() -> {
-                            if (winner.equals(myUsername)) {
+                            // Проверяем, прервалась ли игра из-за выхода игрока
+                            if (payload.startsWith("ABORT:")) {
+                                JOptionPane.showMessageDialog(this, payload.substring(6), "Игра прервана", JOptionPane.WARNING_MESSAGE);
+                            } else if (payload.equals(myUsername)) {
                                 JOptionPane.showMessageDialog(this, "🏆 Поздравляем! Вы победили!", "Конец игры", JOptionPane.INFORMATION_MESSAGE);
                             } else {
-                                JOptionPane.showMessageDialog(this, "💀 Вы проиграли. Победитель: " + winner, "Конец игры", JOptionPane.ERROR_MESSAGE);
+                                JOptionPane.showMessageDialog(this, "💀 Вы проиграли. Победитель: " + payload, "Конец игры", JOptionPane.ERROR_MESSAGE);
                             }
                             resetToLobby();
                         });
@@ -335,16 +337,13 @@ public class GameClient extends JFrame {
             Graphics2D g2 = (Graphics2D) g;
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-            // ИЗМЕНЕНИЯ ЗДЕСЬ: Логика отрисовки многострочного желтого текста
             if (!statusMsg.isEmpty()) {
                 g2.setColor(new Color(255, 230, 100));
                 g2.setFont(new Font("Segoe UI", Font.BOLD, 18));
                 FontMetrics fm = g2.getFontMetrics();
 
-                // Разбиваем сообщение по разделителю " | " (если он есть)
                 String[] lines = statusMsg.split(" \\| ");
 
-                // Вычисляем координату Y, чтобы последняя строка находилась у нижнего края (getHeight() - 25)
                 int lineHeight = 25;
                 int startY = getHeight() - 20 - (lines.length - 1) * lineHeight;
 

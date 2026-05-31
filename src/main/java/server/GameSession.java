@@ -12,6 +12,7 @@ import java.util.Random;
 public class GameSession {
     private final List<ClientHandler> players;
     private boolean gameStarted = false;
+    private boolean sessionAborted = false; // Флаг отмены сессии
     private int currentPlayerIndex = -1;
 
     private final List<Card> tablePile = new ArrayList<>();
@@ -30,13 +31,25 @@ public class GameSession {
         for (ClientHandler player : players) player.sendMessage(message);
     }
 
+    // Метод для обработки отключения игрока
+    public synchronized void handlePlayerDisconnect(ClientHandler player) {
+        if (sessionAborted) return;
+        sessionAborted = true;
+
+        String msg = gameStarted ?
+                "ABORT:Игрок " + player.getUsername() + " отключился. Игра завершена." :
+                "ABORT:Игрок " + player.getUsername() + " покинул лобби до начала игры.";
+
+        broadcast(new Message(MessageType.GAME_OVER, msg));
+    }
+
     public void initSession() {
         broadcast(new Message(MessageType.LOBBY_UPDATE, "Комната собрана! Ждем готовности всех игроков..."));
         checkReadiness();
     }
 
     public synchronized void checkReadiness() {
-        if (gameStarted) return;
+        if (gameStarted || sessionAborted) return;
 
         for (ClientHandler player : players) {
             if (!player.isReady()) return;
@@ -70,12 +83,12 @@ public class GameSession {
     }
 
     public synchronized void nextTurn() {
+        if (sessionAborted) return;
         ClientHandler activePlayer = players.get(currentPlayerIndex);
 
         String turnMsg = "Ходит: " + activePlayer.getUsername();
 
         if (!lastActionMessage.isEmpty()) {
-            // Используем чёткий разделитель " | " для удобного переноса строк на клиенте
             broadcast(new Message(MessageType.LOBBY_UPDATE, lastActionMessage + " | " + turnMsg));
         } else {
             broadcast(new Message(MessageType.LOBBY_UPDATE, turnMsg));
@@ -86,7 +99,7 @@ public class GameSession {
     }
 
     public synchronized void handlePlayTurn(ClientHandler player, List<Card> playedCards) {
-        if (players.indexOf(player) != currentPlayerIndex) return;
+        if (sessionAborted || players.indexOf(player) != currentPlayerIndex) return;
 
         lastPlayer = player;
         lastPlayedCards.clear();
@@ -119,6 +132,8 @@ public class GameSession {
     }
 
     public synchronized void handleCallBluff(ClientHandler caller) {
+        if (sessionAborted) return;
+
         if (lastPlayedCards.isEmpty()) {
             caller.sendMessage(new Message(MessageType.LOBBY_UPDATE, "На столе пусто! Блефовать пока нельзя."));
             caller.sendMessage(new Message(MessageType.YOUR_TURN, getRankNameInRussian(currentTargetRank)));
@@ -142,7 +157,6 @@ public class GameSession {
         }
 
         if (lied) {
-            // Обновленное сообщение при успешном блефе (смайлик удален)
             lastActionMessage = caller.getUsername() + " крикнул БЛЕФ! И оказался прав! " + lastPlayer.getUsername() + " забирает карты";
             lastPlayer.getHand().addAll(tablePile);
             lastPlayer.sendHand();
@@ -150,7 +164,6 @@ public class GameSession {
             caller.sendMessage(new Message(MessageType.LOBBY_UPDATE, "Вы были правы! Патрон возвращен."));
             currentPlayerIndex = players.indexOf(caller);
         } else {
-            // Обновленное сообщение при провальном блефе (смайлик удален)
             lastActionMessage = caller.getUsername() + " крикнул БЛЕФ! Но ошибся! " + lastPlayer.getUsername() + " был честен";
             caller.getHand().addAll(tablePile);
             caller.sendHand();
